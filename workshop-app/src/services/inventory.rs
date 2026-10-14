@@ -2,6 +2,8 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
+use dial9_utils::dial9_span;
+use dial9_utils::span::Instrument;
 use tokio::sync::Mutex;
 
 use crate::model::Product;
@@ -33,29 +35,41 @@ impl Inventory {
 
     /// Models a request to an external inventory service.
     pub(crate) async fn available(&self, product_id: u64) -> Option<u32> {
-        tokio::time::sleep(Duration::from_millis(2)).await;
-        self.available.lock().await.get(&product_id).copied()
+        async {
+            tokio::time::sleep(Duration::from_millis(2)).await;
+            self.available.lock().await.get(&product_id).copied()
+        }
+        .instrument(dial9_span!("inventory.available"))
+        .await
     }
 
     /// Models an inventory reservation and its durable write.
     pub(crate) async fn reserve(&self, product_id: u64, quantity: u32) -> Result<(), ReserveError> {
-        let mut available = self.available.lock().await;
-        let stock = available
-            .get_mut(&product_id)
-            .ok_or(ReserveError::UnknownProduct)?;
-        if *stock < quantity {
-            return Err(ReserveError::InsufficientStock);
-        }
-        *stock -= quantity;
+        async {
+            let mut available = self.available.lock().await;
+            let stock = available
+                .get_mut(&product_id)
+                .ok_or(ReserveError::UnknownProduct)?;
+            if *stock < quantity {
+                return Err(ReserveError::InsufficientStock);
+            }
+            *stock -= quantity;
 
-        // Keep the in-memory update and durable write together so another
-        // reservation cannot observe state that has not been persisted.
-        persist_reservation(product_id, quantity).await;
-        Ok(())
+            // Keep the in-memory update and durable write together so another
+            // reservation cannot observe state that has not been persisted.
+            persist_reservation(product_id, quantity).await;
+            Ok(())
+        }
+        .instrument(dial9_span!("inventory.reserve"))
+        .await
     }
 }
 
 async fn persist_reservation(product_id: u64, quantity: u32) {
-    tokio::time::sleep(RESERVATION_WRITE_LATENCY).await;
-    std::hint::black_box((product_id, quantity));
+    async {
+        tokio::time::sleep(RESERVATION_WRITE_LATENCY).await;
+        std::hint::black_box((product_id, quantity));
+    }
+    .instrument(dial9_span!("inventory.persist"))
+    .await
 }

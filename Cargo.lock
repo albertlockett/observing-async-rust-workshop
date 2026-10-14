@@ -544,8 +544,10 @@ dependencies = [
  "futures-util",
  "hyper",
  "hyper-util",
+ "pin-project-lite",
  "tokio",
  "tower",
+ "tower-layer",
  "tower-service",
  "tracing",
 ]

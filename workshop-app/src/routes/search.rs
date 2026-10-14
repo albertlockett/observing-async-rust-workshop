@@ -33,7 +33,7 @@ pub(super) async fn search(
         .map(ProductSummary::from)
         .collect();
     // Suggestions enrich search results for clients that request them.
-    let suggestions = if params.suggestions.unwrap_or(true) {
+    let suggestions = if params.suggestions.unwrap_or(false) {
         state.suggestions.fetch(query).await
     } else {
         Vec::new()

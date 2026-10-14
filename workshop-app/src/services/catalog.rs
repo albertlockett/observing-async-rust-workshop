@@ -3,6 +3,9 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
 
+use dial9_utils::dial9_span;
+use dial9_utils::span::{Instrument, Span};
+
 use crate::model::Product;
 
 const STORAGE_LATENCY: std::time::Duration = std::time::Duration::from_millis(500);
@@ -34,6 +37,8 @@ impl Catalog {
     }
 
     pub(crate) fn search(&self, query: &str, limit: usize) -> Vec<Product> {
+        let span = dial9_span!("catalog.search", limit: u64 = limit as u64);
+        let _entered = span.enter();
         let query = query.to_ascii_lowercase();
         let Ok(products) = self.products.read() else {
             return Vec::new();
@@ -52,16 +57,16 @@ impl Catalog {
     }
 
     pub(crate) async fn refresh(&self) -> io::Result<()> {
-        let products = read_products_from_storage(&self.path)?;
-        // let path = Arc::clone(&self.path);
-        // let products = tokio::task::spawn_blocking(move || read_products_from_storage(&path))
-        //     .await
-        //     .map_err(io::Error::other)??;
-        *self
-            .products
-            .write()
-            .map_err(|_| io::Error::other("catalog lock poisoned"))? = products;
-        Ok(())
+        async {
+            let products = read_products_from_storage(&self.path)?;
+            *self
+                .products
+                .write()
+                .map_err(|_| io::Error::other("catalog lock poisoned"))? = products;
+            Ok(())
+        }
+        .instrument(dial9_span!("catalog.refresh"))
+        .await
     }
 }
 
