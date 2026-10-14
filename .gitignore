@@ -1,0 +1,6 @@
+/target/
+
+/traces/local/*
+!/traces/local/.gitkeep
+
+.DS_Store

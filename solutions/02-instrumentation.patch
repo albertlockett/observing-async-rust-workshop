@@ -1,0 +1,283 @@
+Instrumentation checkpoint for exercise 02.
+
+diff --git a/workshop-app/Cargo.toml b/workshop-app/Cargo.toml
+--- a/workshop-app/Cargo.toml
++++ b/workshop-app/Cargo.toml
+@@ -11,7 +11,7 @@ linux-profiling = ["dial9/cpu-profiling"]
+ axum = "0.8"
+ clap = { version = "4", features = ["derive"] }
+ dial9 = { version = "0.5", features = ["tokio"] }
+-dial9-utils = { version = "0.5", features = ["axum-08"] }
++dial9-utils = { version = "0.5", features = ["axum-08", "tower"] }
+ regex = "1"
+ serde = { version = "1", features = ["derive"] }
+ serde_json = "1"
+diff --git a/workshop-app/src/routes/mod.rs b/workshop-app/src/routes/mod.rs
+--- a/workshop-app/src/routes/mod.rs
++++ b/workshop-app/src/routes/mod.rs
+@@ -5,15 +5,35 @@ mod search;
+ 
+ use axum::Json;
+ use axum::Router;
++use axum::extract::{MatchedPath, Request};
+ use axum::http::StatusCode;
+ use axum::response::{IntoResponse, Response};
+ use axum::routing::{get, post};
++use dial9_utils::dial9_span;
++use dial9_utils::tower::Dial9SpanLayerWithResponse;
+ use serde::Serialize;
+ 
+ use crate::model::ServiceInfo;
+ use crate::state::AppState;
+ 
+ pub(crate) fn router(state: AppState) -> Router {
++    let request_spans = Dial9SpanLayerWithResponse::new(|request: &Request| {
++        let route = request
++            .extensions()
++            .get::<MatchedPath>()
++            .map(|path| path.as_str().to_owned())
++            .unwrap_or_else(|| "unmatched".to_owned());
++        let (span, slots) = dial9_span!(
++            "http.request",
++            method = %request.method(),
++            route: String = route,
++            status: u64,
++        );
++        (span, move |response: &Response| {
++            slots.status.set(u64::from(response.status().as_u16()))
++        })
++    });
++
+     Router::new()
+         .route("/", get(index))
+         .route("/health", get(health))
+@@ -21,6 +41,7 @@ pub(crate) fn router(state: AppState) -> Router {
+         .route("/search", get(search::search))
+         .route("/checkout", post(checkout::checkout))
+         .with_state(state)
++        .layer(request_spans)
+ }
+ 
+ async fn index() -> Json<ServiceInfo> {
+diff --git a/workshop-app/src/services/recommendations.rs b/workshop-app/src/services/recommendations.rs
+--- a/workshop-app/src/services/recommendations.rs
++++ b/workshop-app/src/services/recommendations.rs
+@@ -1,3 +1,6 @@
+ use std::time::Duration;
+ 
++use dial9_utils::dial9_span;
++use dial9_utils::span::Instrument as _;
++
+ const BACKEND_LATENCY: Duration = Duration::from_secs(1);
+@@ -10,6 +13,13 @@ impl Recommendations {
+     /// Models a request to an external recommendations service.
+     pub(crate) async fn fetch(&self, product_id: u64) -> Vec<u64> {
+-        tokio::time::sleep(BACKEND_LATENCY).await;
+-        vec![product_id.saturating_add(1), product_id.saturating_add(2)]
++        async {
++            tokio::time::sleep(BACKEND_LATENCY).await;
++            vec![product_id.saturating_add(1), product_id.saturating_add(2)]
++        }
++        .instrument(dial9_span!(
++            "recommendations.fetch",
++            product_id: u64 = product_id,
++        ))
++        .await
+     }
+ }
+diff --git a/workshop-app/src/services/catalog.rs b/workshop-app/src/services/catalog.rs
+--- a/workshop-app/src/services/catalog.rs
++++ b/workshop-app/src/services/catalog.rs
+@@ -3,6 +3,9 @@ use std::io;
+ use std::path::{Path, PathBuf};
+ use std::sync::{Arc, RwLock};
+ 
++use dial9_utils::dial9_span;
++use dial9_utils::span::{Instrument as _, Span as _};
++
+ use crate::model::Product;
+ 
+ const STORAGE_LATENCY: std::time::Duration = std::time::Duration::from_millis(500);
+@@ -34,6 +37,8 @@ impl Catalog {
+     }
+ 
+     pub(crate) fn search(&self, query: &str, limit: usize) -> Vec<Product> {
++        let span = dial9_span!("catalog.search", limit: u64 = limit as u64);
++        let _entered = span.enter();
+         let query = query.to_ascii_lowercase();
+         let Ok(products) = self.products.read() else {
+             return Vec::new();
+@@ -52,15 +57,19 @@ impl Catalog {
+     }
+ 
+     pub(crate) async fn refresh(&self) -> io::Result<()> {
+-        let path = Arc::clone(&self.path);
+-        let products = tokio::task::spawn_blocking(move || read_products_from_storage(&path))
+-            .await
+-            .map_err(io::Error::other)??;
+-        *self
+-            .products
+-            .write()
+-            .map_err(|_| io::Error::other("catalog lock poisoned"))? = products;
+-        Ok(())
++        async {
++            let path = Arc::clone(&self.path);
++            let products = tokio::task::spawn_blocking(move || read_products_from_storage(&path))
++                .await
++                .map_err(io::Error::other)??;
++            *self
++                .products
++                .write()
++                .map_err(|_| io::Error::other("catalog lock poisoned"))? = products;
++            Ok(())
++        }
++        .instrument(dial9_span!("catalog.refresh"))
++        .await
+     }
+ }
+ 
+diff --git a/workshop-app/src/services/inventory.rs b/workshop-app/src/services/inventory.rs
+--- a/workshop-app/src/services/inventory.rs
++++ b/workshop-app/src/services/inventory.rs
+@@ -2,6 +2,8 @@ use std::collections::HashMap;
+ use std::sync::Arc;
+ use std::time::Duration;
+ 
++use dial9_utils::dial9_span;
++use dial9_utils::span::Instrument as _;
+ use tokio::sync::Mutex;
+ 
+ use crate::model::Product;
+@@ -32,29 +34,51 @@ impl Inventory {
+ 
+     /// Models a request to an external inventory service.
+     pub(crate) async fn available(&self, product_id: u64) -> Option<u32> {
+-        tokio::time::sleep(Duration::from_millis(2)).await;
+-        self.available.lock().await.get(&product_id).copied()
++        async {
++            tokio::time::sleep(Duration::from_millis(2)).await;
++            self.available.lock().await.get(&product_id).copied()
++        }
++        .instrument(dial9_span!(
++            "inventory.available",
++            product_id: u64 = product_id,
++        ))
++        .await
+     }
+ 
+     /// Models an inventory reservation and its durable write.
+     pub(crate) async fn reserve(&self, product_id: u64, quantity: u32) -> Result<(), ReserveError> {
+-        let mut available = self.available.lock().await;
+-        let stock = available
+-            .get_mut(&product_id)
+-            .ok_or(ReserveError::UnknownProduct)?;
+-        if *stock < quantity {
+-            return Err(ReserveError::InsufficientStock);
++        async {
++            let mut available = self.available.lock().await;
++            let stock = available
++                .get_mut(&product_id)
++                .ok_or(ReserveError::UnknownProduct)?;
++            if *stock < quantity {
++                return Err(ReserveError::InsufficientStock);
++            }
++            *stock -= quantity;
++
++            // Keep the in-memory update and durable write together so another
++            // reservation cannot observe state that has not been persisted.
++            persist_reservation(product_id, quantity).await;
++            Ok(())
+         }
+-        *stock -= quantity;
+-
+-        // Keep the in-memory update and durable write together so another
+-        // reservation cannot observe state that has not been persisted.
+-        persist_reservation(product_id, quantity).await;
+-        Ok(())
++        .instrument(dial9_span!(
++            "inventory.reserve",
++            product_id: u64 = product_id,
++            quantity: u64 = u64::from(quantity),
++        ))
++        .await
+     }
+ }
+ 
+ async fn persist_reservation(product_id: u64, quantity: u32) {
+-    tokio::time::sleep(RESERVATION_WRITE_LATENCY).await;
+-    std::hint::black_box((product_id, quantity));
++    async {
++        tokio::time::sleep(RESERVATION_WRITE_LATENCY).await;
++        std::hint::black_box((product_id, quantity));
++    }
++    .instrument(dial9_span!(
++        "inventory.persist",
++        product_id: u64 = product_id,
++    ))
++    .await;
+ }
+diff --git a/workshop-app/src/services/pricing.rs b/workshop-app/src/services/pricing.rs
+--- a/workshop-app/src/services/pricing.rs
++++ b/workshop-app/src/services/pricing.rs
+@@ -1,5 +1,8 @@
+ use std::time::Duration;
+ 
++use dial9_utils::dial9_span;
++use dial9_utils::span::Instrument as _;
++
+ use crate::model::Product;
+ 
+ #[derive(Clone)]
+@@ -8,10 +11,17 @@ pub(crate) struct Pricing;
+ impl Pricing {
+     /// Models a small request to an external pricing service.
+     pub(crate) async fn quote(&self, product: &Product) -> u64 {
+-        tokio::time::sleep(Duration::from_millis(3)).await;
+-        match product.category.as_str() {
+-            "books" => product.base_price_cents.saturating_mul(9) / 10,
+-            _ => product.base_price_cents,
++        async {
++            tokio::time::sleep(Duration::from_millis(3)).await;
++            match product.category.as_str() {
++                "books" => product.base_price_cents.saturating_mul(9) / 10,
++                _ => product.base_price_cents,
++            }
+         }
++        .instrument(dial9_span!(
++            "pricing.quote",
++            product_id: u64 = product.id,
++        ))
++        .await
+     }
+ }
+diff --git a/workshop-app/src/services/suggestions.rs b/workshop-app/src/services/suggestions.rs
+--- a/workshop-app/src/services/suggestions.rs
++++ b/workshop-app/src/services/suggestions.rs
+@@ -1,5 +1,8 @@
+ use std::time::Duration;
+ 
++use dial9_utils::dial9_span;
++use dial9_utils::span::Instrument as _;
++
+ const BACKEND_LATENCY: Duration = Duration::from_millis(80);
+ 
+ #[derive(Clone)]
+@@ -8,8 +11,15 @@ pub(crate) struct Suggestions;
+ impl Suggestions {
+     /// Models fetching from a remote suggestions service
+     pub(crate) async fn fetch(&self, query: &str) -> Vec<String> {
+-        // stands for something like http_client.get(suggestions_url).send().await do not modify
+-        tokio::time::sleep(BACKEND_LATENCY).await;
+-        vec![format!("{query} gifts"), format!("{query} deals")]
++        async {
++            // stands for something like http_client.get(suggestions_url).send().await do not modify
++            tokio::time::sleep(BACKEND_LATENCY).await;
++            vec![format!("{query} gifts"), format!("{query} deals")]
++        }
++        .instrument(dial9_span!(
++            "suggestions.fetch",
++            query_len: u64 = query.len() as u64,
++        ))
++        .await
+     }
+ }

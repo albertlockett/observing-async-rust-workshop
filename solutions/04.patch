@@ -1,0 +1,25 @@
+Solution for exercise 04.
+
+diff --git a/workshop-app/src/routes/catalog.rs b/workshop-app/src/routes/catalog.rs
+--- a/workshop-app/src/routes/catalog.rs
++++ b/workshop-app/src/routes/catalog.rs
+@@ -39,13 +39,11 @@ pub(super) async fn product(
+         .await
+         .ok_or(ApiError::Unavailable("inventory unavailable"))?;
+     let recommendations = if params.recommendations {
+-        let service = state.recommendations.clone();
+-        let task = dial9::Dial9TokioHandle::current()
+-            .spawn(async move { service.fetch(product_id).await });
+-        tokio::time::timeout(RECOMMENDATIONS_BUDGET, task)
++        tokio::time::timeout(
++            RECOMMENDATIONS_BUDGET,
++            state.recommendations.fetch(product_id),
++        )
+-            .await
+-            .ok()
+-            .and_then(Result::ok)
+-            .unwrap_or_default()
++        .await
++        .unwrap_or_default()
+     } else {
+         Vec::new()

@@ -1,0 +1,14 @@
+Solution for exercise 07.
+
+diff --git a/workshop-app/src/main.rs b/workshop-app/src/main.rs
+--- a/workshop-app/src/main.rs
++++ b/workshop-app/src/main.rs
+@@ -21,7 +21,7 @@ const TRACE_ROTATION_PERIOD: Duration = Duration::from_secs(60);
+ const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(2);
+ const SERVICE: &str = "workshop-app";
+ const DEFAULT_INSTANCE: &str = "local";
+-const LOG_FILTER: &str = "info,workshop_app=trace";
++const LOG_FILTER: &str = "info";
+ 
+ #[derive(Parser, Debug)]
+ #[command(about = "The service used in the async observability workshop")]

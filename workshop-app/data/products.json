@@ -1,0 +1,10 @@
+[
+  { "id": 1, "name": "Async Rust", "category": "books", "base_price_cents": 3999, "stock": 80 },
+  { "id": 2, "name": "Rust for Rustaceans", "category": "books", "base_price_cents": 4499, "stock": 60 },
+  { "id": 3, "name": "Mechanical Keyboard", "category": "hardware", "base_price_cents": 12900, "stock": 25 },
+  { "id": 4, "name": "USB-C Dock", "category": "hardware", "base_price_cents": 8900, "stock": 30 },
+  { "id": 5, "name": "Conference Hoodie", "category": "apparel", "base_price_cents": 6500, "stock": 10000 },
+  { "id": 6, "name": "Ferris T-Shirt", "category": "apparel", "base_price_cents": 3200, "stock": 10000 },
+  { "id": 7, "name": "Tokio Sticker Pack", "category": "accessories", "base_price_cents": 900, "stock": 10000 },
+  { "id": 8, "name": "Dial9 Field Notes", "category": "stationery", "base_price_cents": 1800, "stock": 10000 }
+]

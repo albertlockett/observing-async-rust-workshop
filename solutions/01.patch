@@ -1,0 +1,18 @@
+Solution for exercise 01.
+
+diff --git a/workshop-app/src/services/catalog.rs b/workshop-app/src/services/catalog.rs
+--- a/workshop-app/src/services/catalog.rs
++++ b/workshop-app/src/services/catalog.rs
+@@ -51,8 +51,11 @@ impl Catalog {
+         matches
+     }
+ 
+     pub(crate) async fn refresh(&self) -> io::Result<()> {
+-        let products = read_products_from_storage(&self.path)?;
++        let path = Arc::clone(&self.path);
++        let products = tokio::task::spawn_blocking(move || read_products_from_storage(&path))
++            .await
++            .map_err(io::Error::other)??;
+         *self
+             .products
+             .write()

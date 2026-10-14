@@ -1,0 +1,18 @@
+Solution for exercise 00.
+
+diff --git a/workshop-app/src/app.rs b/workshop-app/src/app.rs
+--- a/workshop-app/src/app.rs
++++ b/workshop-app/src/app.rs
+@@ -28,7 +28,11 @@ pub(crate) async fn serve(listen: SocketAddr, catalog_path: PathBuf) -> io::Result
+     println!("listening on http://{}", listener.local_addr()?);
+     println!("press Ctrl-C to stop");
+ 
+-    axum::serve(listener, router)
++    let handle = dial9::Dial9TokioHandle::current();
++    dial9_utils::dial9_axum::axum_0_8::serve(listener, router.into_make_service())
++        .with_executor(move |future| {
++            handle.spawn(future);
++        })
+         .with_graceful_shutdown(shutdown_signal())
+         .await
+ }

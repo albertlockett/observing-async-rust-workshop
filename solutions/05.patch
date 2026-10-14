@@ -1,0 +1,30 @@
+Solution for exercise 05.
+
+diff --git a/workshop-app/src/routes/search.rs b/workshop-app/src/routes/search.rs
+--- a/workshop-app/src/routes/search.rs
++++ b/workshop-app/src/routes/search.rs
+@@ -1,3 +1,5 @@
++use std::sync::LazyLock;
++
+ use axum::Json;
+ use axum::extract::{Query, State};
+ use regex::Regex;
+@@ -8,6 +10,9 @@ use crate::state::AppState;
+ 
+ use super::ApiError;
+ 
++static UNICODE_SEARCH_QUERY: LazyLock<Regex> =
++    LazyLock::new(|| Regex::new(UNICODE_SEARCH_QUERY_PATTERN).unwrap());
++
+ const UNICODE_SEARCH_QUERY_PATTERN: &str = r"(?iu)^[\p{L}\p{N}][\p{L}\p{N}\s.,'_-]{0,63}$";
+ 
+ #[derive(Deserialize)]
+@@ -60,7 +63,5 @@ fn valid_search_query(query: &str) -> bool {
+             });
+     }
+ 
+-    Regex::new(UNICODE_SEARCH_QUERY_PATTERN)
+-        .expect("search query pattern is valid")
+-        .is_match(query)
++    UNICODE_SEARCH_QUERY.is_match(query)
+ }

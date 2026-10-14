@@ -1,0 +1,9 @@
+[alias]
+hotlap = "run --release -p hotlap --"
+workshop-app = "run --release -p workshop-app --"
+
+[build]
+rustflags = [
+  "--cfg", "tokio_unstable",
+  "-C", "force-frame-pointers=yes",
+]
