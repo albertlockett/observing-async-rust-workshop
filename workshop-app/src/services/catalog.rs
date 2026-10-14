@@ -53,6 +53,10 @@ impl Catalog {
 
     pub(crate) async fn refresh(&self) -> io::Result<()> {
         let products = read_products_from_storage(&self.path)?;
+        // let path = Arc::clone(&self.path);
+        // let products = tokio::task::spawn_blocking(move || read_products_from_storage(&path))
+        //     .await
+        //     .map_err(io::Error::other)??;
         *self
             .products
             .write()

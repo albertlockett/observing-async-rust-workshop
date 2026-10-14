@@ -30,9 +30,17 @@ pub(crate) async fn serve(listen: SocketAddr, catalog_path: PathBuf) -> io::Resu
     println!("listening on http://{}", listener.local_addr()?);
     println!("press Ctrl-C to stop");
 
-    axum::serve(listener, router)
+    let handle = dial9::Dial9TokioHandle::current();
+    dial9_utils::dial9_axum::axum_0_8::serve(listener, router.into_make_service())
+        .with_executor(move |fut| {
+            handle.spawn(fut);
+        })
         .with_graceful_shutdown(shutdown_signal())
         .await
+
+    // axum::serve(listener, router)
+    //     .with_graceful_shutdown(shutdown_signal())
+    // .await
 }
 
 async fn shutdown_signal() {
