@@ -34,12 +34,13 @@ pub(super) async fn product(
         .ok_or(ApiError::Unavailable("inventory unavailable"))?;
     let recommendations = if params.recommendations {
         let service = state.recommendations.clone();
-        let task = dial9::Dial9TokioHandle::current()
-            .spawn(async move { service.fetch(product_id).await });
-        tokio::time::timeout(RECOMMENDATIONS_BUDGET, task)
+        // let task = dial9::Dial9TokioHandle::current()
+        //     .spawn(async move { service.fetch(product_id).await });
+        // tokio::time::timeout(RECOMMENDATIONS_BUDGET, task)
+        tokio::time::timeout(RECOMMENDATIONS_BUDGET, service.fetch(product_id))
             .await
             .ok()
-            .and_then(Result::ok)
+            // .and_then(Result::ok)
             .unwrap_or_default()
     } else {
         Vec::new()
