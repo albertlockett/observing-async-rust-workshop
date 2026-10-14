@@ -46,14 +46,16 @@ impl Inventory {
     /// Models an inventory reservation and its durable write.
     pub(crate) async fn reserve(&self, product_id: u64, quantity: u32) -> Result<(), ReserveError> {
         async {
-            let mut available = self.available.lock().await;
-            let stock = available
-                .get_mut(&product_id)
-                .ok_or(ReserveError::UnknownProduct)?;
-            if *stock < quantity {
-                return Err(ReserveError::InsufficientStock);
+            {
+                let mut available = self.available.lock().await;
+                let stock = available
+                    .get_mut(&product_id)
+                    .ok_or(ReserveError::UnknownProduct)?;
+                if *stock < quantity {
+                    return Err(ReserveError::InsufficientStock);
+                }
+                *stock -= quantity;
             }
-            *stock -= quantity;
 
             // Keep the in-memory update and durable write together so another
             // reservation cannot observe state that has not been persisted.
