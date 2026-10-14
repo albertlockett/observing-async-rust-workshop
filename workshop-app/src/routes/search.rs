@@ -1,3 +1,6 @@
+use std::cell::OnceCell;
+use std::sync::LazyLock;
+
 use axum::Json;
 use axum::extract::{Query, State};
 use regex::Regex;
@@ -9,6 +12,9 @@ use crate::state::AppState;
 use super::ApiError;
 
 const UNICODE_SEARCH_QUERY_PATTERN: &str = r"(?iu)^[\p{L}\p{N}][\p{L}\p{N}\s.,'_-]{0,63}$";
+const UNICODE_REGEX: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(UNICODE_SEARCH_QUERY_PATTERN).expect("search query pattern is valid")
+});
 
 #[derive(Deserialize)]
 pub(super) struct SearchParams {
@@ -60,7 +66,5 @@ fn valid_search_query(query: &str) -> bool {
             });
     }
 
-    Regex::new(UNICODE_SEARCH_QUERY_PATTERN)
-        .expect("search query pattern is valid")
-        .is_match(query)
+    UNICODE_REGEX.is_match(query)
 }

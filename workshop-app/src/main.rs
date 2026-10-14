@@ -21,7 +21,7 @@ const TRACE_ROTATION_PERIOD: Duration = Duration::from_secs(60);
 const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(2);
 const SERVICE: &str = "workshop-app";
 const DEFAULT_INSTANCE: &str = "local";
-const LOG_FILTER: &str = "info,workshop_app=trace";
+const LOG_FILTER: &str = "info,workshop_app=debug";
 
 #[derive(Parser, Debug)]
 #[command(about = "The service used in the async observability workshop")]
